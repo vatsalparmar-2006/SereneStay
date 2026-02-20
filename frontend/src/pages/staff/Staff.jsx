@@ -1,0 +1,279 @@
+import { useEffect, useState } from "react";
+import { getAllStaff, addStaff, updateStaff, deleteStaff } from "../../api/staff.api";
+import { UserPlus, Shield, Edit3, Trash2, X, User, Fingerprint } from "lucide-react";
+import toast from "react-hot-toast";
+
+const Staff = () => {
+  const [staff, setStaff] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [editingStaff, setEditingStaff] = useState(null);
+  const [formData, setFormData] = useState({
+    username: "",
+    password: "",
+    fullName: "",
+    role: "",
+  });
+
+  useEffect(() => {
+    loadStaff();
+  }, []);
+
+  const loadStaff = async () => {
+    try {
+      setLoading(true);
+      const res = await getAllStaff();
+      setStaff(res.data);
+    } catch (error) {
+      toast.error("Failed to load staff");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingStaff) {
+        await updateStaff(editingStaff.staffId, formData);
+        toast.success("Staff updated successfully");
+      } else {
+        await addStaff(formData);
+        toast.success("Staff added successfully");
+      }
+      loadStaff();
+      resetForm();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Operation failed");
+    }
+  };
+
+  const handleEdit = (staffMember) => {
+    setEditingStaff(staffMember);
+    setFormData({
+      username: staffMember.username,
+      password: "",
+      fullName: staffMember.fullName,
+      role: staffMember.role,
+    });
+    setShowModal(true);
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm("Are you sure you want to delete this staff member?")) {
+      try {
+        await deleteStaff(id);
+        toast.success("Staff deleted successfully");
+        loadStaff();
+      } catch (error) {
+        toast.error("Failed to delete staff");
+      }
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({ username: "", password: "", fullName: "", role: "" });
+    setEditingStaff(null);
+    setShowModal(false);
+  };
+
+  const getRoleStyle = (role) => {
+    switch (role?.toLowerCase()) {
+      case 'admin': return 'bg-purple-100 text-purple-700 ring-1 ring-purple-600/20';
+      case 'manager': return 'bg-blue-100 text-blue-700 ring-1 ring-blue-600/20';
+      case 'receptionist': return 'bg-green-100 text-green-700 ring-1 ring-green-600/20';
+      default: return 'bg-gray-100 text-gray-700 ring-1 ring-gray-600/20';
+    }
+  };
+
+  return (
+    <div className="p-8 bg-gray-50 min-h-screen">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
+            Personnel Directory
+          </h1>
+          <p className="text-gray-500 mt-1">Manage system access, security roles, and team credentials.</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 hidden sm:block">
+            <span className="text-sm font-medium text-gray-600">Active Staff: </span>
+            <span className="text-blue-600 font-bold">{staff.length}</span>
+          </div>
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all font-bold text-sm"
+          >
+            <UserPlus size={18} /> Add Member
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex flex-col items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <p className="mt-4 text-gray-500 font-medium">Loading directory...</p>
+        </div>
+      ) : (
+        <div className="bg-white shadow-xl rounded-xl border border-gray-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  {["Team Member", "Account ID", "Access Role", "Actions"].map((header) => (
+                    <th key={header} className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      {header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-100">
+                {staff.map((s) => (
+                  <tr key={s.staffId} className="hover:bg-blue-50/30 transition-colors duration-200 group">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                          <User size={18} />
+                        </div>
+                        <span className="text-sm font-bold text-gray-900">{s.fullName}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2 text-sm text-gray-600 font-medium">
+                        <Fingerprint size={14} className="text-gray-300" />
+                        {s.username}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${getRoleStyle(s.role)}`}>
+                        {s.role}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => handleEdit(s)}
+                          className="flex items-center gap-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded-lg transition-all duration-200 border border-blue-100"
+                        >
+                          <Edit3 size={14} />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          onClick={() => handleDelete(s.staffId)}
+                          className="flex items-center gap-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-3 py-1.5 rounded-lg transition-all duration-200 border border-red-100"
+                        >
+                          <Trash2 size={14} />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {staff.length === 0 && (
+            <div className="py-12 text-center">
+              <p className="text-gray-400">No team members found in the database.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modern Modal Overlay */}
+      {showModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl relative border border-gray-100 animate-in fade-in zoom-in duration-200">
+            <button 
+              onClick={resetForm} 
+              className="absolute top-6 right-6 p-2 hover:bg-gray-100 rounded-full text-gray-400 transition-colors"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+                <Shield className="text-blue-600" size={24} />
+                {editingStaff ? "Update Member" : "New Account"}
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">Configure staff details and permissions.</p>
+            </div>
+            
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-500 uppercase ml-1">Full Name</label>
+                <input
+                  type="text"
+                  placeholder="John Doe"
+                  value={formData.fullName}
+                  onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                  className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-500 uppercase ml-1">Username</label>
+                <input
+                  type="text"
+                  placeholder="johndoe_admin"
+                  value={formData.username}
+                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-500 uppercase ml-1">Password</label>
+                <input
+                  type="password"
+                  placeholder={editingStaff ? "Leave blank to keep current" : "Min. 6 characters"}
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                  required={!editingStaff}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-500 uppercase ml-1">Access Role</label>
+                <select
+                  value={formData.role}
+                  onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                  className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none appearance-none cursor-pointer"
+                  required
+                >
+                  <option value="">Select a role...</option>
+                  <option value="Admin">Admin</option>
+                  <option value="Manager">Manager</option>
+                  <option value="Receptionist">Receptionist</option>
+                  <option value="Housekeeping">Housekeeping</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="flex-1 py-3 text-gray-600 font-bold hover:bg-gray-100 rounded-xl transition-colors text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all text-sm"
+                >
+                  {editingStaff ? "Save Changes" : "Create Account"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Staff;

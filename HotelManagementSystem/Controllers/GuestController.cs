@@ -1,4 +1,5 @@
 ﻿using HotelManagementSystem.DTO;
+using HotelManagementSystem.Helper;
 using HotelManagementSystem.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -19,6 +20,7 @@ namespace HotelManagementSystem.Controllers
             _context = context;
         }
 
+        #region AddGuest
         // POST: api/Guest/AddGuest
         [HttpPost("AddGuest")]
         [AllowAnonymous]
@@ -56,14 +58,30 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region GetAllGuest
         // GET: api/Guest/GetAllGuest
         [HttpGet("GetAllGuest")]
-        public async Task<IActionResult> GetAllGuest()
+        public async Task<IActionResult> GetAllGuest(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 5,
+            [FromQuery] string search = ""
+        )
         {
             try
             {
-                var guests = await _context.Guests
+                var query = _context.Guests.AsQueryable();
+
+                if (!string.IsNullOrEmpty(search))
+                {
+                    string s = search.ToLower();
+                    query = query.Where(g => g.FullName.ToLower().Contains(s) ||
+                                             g.Email.ToLower().Contains(s) ||
+                                             g.Phone.Contains(s));
+                }
+
+                var projection = query.OrderByDescending(g => g.GuestId)
                     .Select(g => new GuestDisplayDTO
                     {
                         GuestId = g.GuestId,
@@ -74,17 +92,20 @@ namespace HotelManagementSystem.Controllers
                         IdproofType = g.IdproofType,
                         IdproofNumber = g.IdproofNumber,
                         CreatedAt = (DateTime)g.CreatedAt
-                    })
-                    .ToListAsync();
+                    });
 
-                return Ok(guests);
+                var result = await projection.ToPagedResponseAsync(page, pageSize);
+
+                return Ok(result);
             }
             catch (Exception ex)
             {
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region GetGuestById
         //GET: api/Guest/GetGuestById/{id}
         [HttpGet("GetAllGuest/{id}")]
         public async Task<IActionResult> GetGuestById(int id)
@@ -120,7 +141,9 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region UpdateGuest
         // PUT: api/Guest/UpdateGuest/{id}
         [HttpPut("UpdateGuest/{id}")]
         public async Task<IActionResult> UpdateGuest(int id, [FromBody] GuestCreateDTO guestDto)
@@ -153,7 +176,9 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region DeleteGuest
         // DELETE: api/Guest/DeleteGuest/{id}
         [HttpDelete("DeleteGuest/{id}")]
         public async Task<IActionResult> DeleteGuest(int id)
@@ -176,9 +201,12 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region GetGuestByEmail
         // GET: api/Guest/GetGuestByEmail/{email}
         [HttpGet("GetGuestByEmail/{email}")]
+        [AllowAnonymous]
         public async Task<IActionResult> GetGuestByEmail(string email)
         {
             var guest = await _context.Guests
@@ -187,5 +215,6 @@ namespace HotelManagementSystem.Controllers
             if (guest == null) return NotFound();
             return Ok(guest);
         }
+        #endregion
     }
 }

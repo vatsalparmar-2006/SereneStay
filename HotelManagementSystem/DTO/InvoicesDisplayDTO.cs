@@ -1,4 +1,4 @@
-﻿using HotelManagementSystem.Models;
+using HotelManagementSystem.Models;
 
 namespace HotelManagementSystem.DTO
 {
@@ -21,10 +21,14 @@ namespace HotelManagementSystem.DTO
         public decimal PaidAmount { get; set; }
 
         // Calculate balance on the fly for the UI
-        public decimal BalanceDue => TotalAmount - PaidAmount; 
+        public decimal BalanceAmount => TotalAmount - PaidAmount; 
 
         public string PaymentStatus { get; set; }
         public string PaymentMethod { get; set; }
         public DateTime? InvoiceDate { get; set; }
+
+        // Booking context for settle button logic
+        public string BookingStatus { get; set; }
+        public DateOnly? CheckOutDate { get; set; }
     }
 }

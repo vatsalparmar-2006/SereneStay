@@ -1,7 +1,9 @@
 import api from "./axios";
 
-const getAllRoomTypes = () => {
-  return api.get("/RoomType/AllRoomType");
+const getAllRoomTypes = (page = 1, pageSize = 5, search = "") => {
+  return api.get(`/RoomType/AllRoomType`, {
+    params: { page, pageSize, search }
+  });
 };
 
 const getRoomTypeById = (id) => {

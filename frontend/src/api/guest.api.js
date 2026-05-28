@@ -4,8 +4,10 @@ export const addGuest = (data) => {
   return api.post("/Guest/AddGuest", data);
 };
 
-export const getAllGuests = () => {
-  return api.get("/Guest/GetAllGuest");
+export const getAllGuests = (page = 1, pageSize = 5, search = "") => {
+  return api.get(`/Guest/GetAllGuest`, {
+    params: { page, pageSize, search }
+  });
 };
 
 export const getGuestById = (id) => {

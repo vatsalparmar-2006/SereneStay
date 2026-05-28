@@ -1,11 +1,12 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { searchAvailableRooms } from "../../api/rooms.api";
 import { addBooking, getBookingsByEmail } from "../../api/booking.api";
 import { addGuest, getGuestByEmail } from "../../api/guest.api";
 import { 
   Search, Users, Calendar, Sparkles, X, 
   CheckCircle, CreditCard, MapPin, ShieldCheck, 
-  Star, AlertCircle, Wifi, Wind, Coffee, Tv, ArrowLeft, Mail, UserCircle
+  Star, AlertCircle, Wifi, Wind, Coffee, Tv, ArrowLeft, Mail, UserCircle, Wallet, Hotel
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -37,6 +38,50 @@ const Home = () => {
   const [guestForm, setGuestForm] = useState({
     fullName: "", email: "", phone: "", address: "", idproofType: "Aadhar", idproofNumber: ""
   });
+  const [isReturningGuest, setIsReturningGuest] = useState(false);
+  const [verifiedGuestId, setVerifiedGuestId] = useState(null);
+
+  // Auto-fill guest form when an existing guest email is entered
+  const handleEmailLookup = async (email) => {
+    if (!email) return;
+    try {
+      const res = await getGuestByEmail(email);
+      const guest = res.data;
+      if (guest) {
+        setVerifiedGuestId(guest.guestId || guest.GuestId);
+        setGuestForm(prev => ({
+          ...prev,
+          fullName: guest.fullName || guest.FullName || prev.fullName,
+          phone: guest.phone || guest.Phone || prev.phone,
+          address: guest.address || guest.Address || prev.address,
+          idproofType: guest.idproofType || guest.IdproofType || prev.idproofType,
+          idproofNumber: guest.idproofNumber || guest.IdproofNumber || prev.idproofNumber,
+        }));
+        toast.success(`Welcome back, ${guest.fullName || guest.FullName}!`);
+      }
+    } catch (e) {
+      setVerifiedGuestId(null);
+      if (isReturningGuest) {
+        const errData = e.response?.data;
+        let errorMsg = "No guest profile found with this email.";
+        if (errData) {
+          if (typeof errData === "string") {
+            errorMsg = errData;
+          } else if (errData.message) {
+            errorMsg = errData.message;
+          }
+        }
+        toast.error(errorMsg);
+      }
+    }
+  };
+
+  const handleToggleGuestType = (isReturning) => {
+    setIsReturningGuest(isReturning);
+    setVerifiedGuestId(null);
+    setGuestForm({ fullName: "", email: "", phone: "", address: "", idproofType: "Aadhar", idproofNumber: "" });
+    setApiError("");
+  };
 
   const handleSearch = async () => {
     if (!checkIn || !checkOut) {
@@ -55,7 +100,21 @@ const Home = () => {
       if (data.requiresMultipleRooms && data.message) setSearchWarning(data.message);
       else if (roomData.length === 0) toast.error("No suites available for these dates.");
     } catch (err) {
-      toast.error("Search failed.");
+      const errData = err.response?.data;
+      let errorMsg = "Search failed. Please try again.";
+      if (errData) {
+        if (typeof errData === "string") {
+          errorMsg = errData;
+        } else if (errData.errors) {
+          const errorList = Object.values(errData.errors).flat();
+          errorMsg = errorList.length > 0 ? errorList[0] : "Invalid search criteria.";
+        } else if (errData.message) {
+          errorMsg = errData.message;
+        } else if (errData.title) {
+          errorMsg = errData.title;
+        }
+      }
+      toast.error(errorMsg);
       setRooms([]);
     } finally {
       setLoading(false);
@@ -69,7 +128,21 @@ const Home = () => {
       const res = await getBookingsByEmail(searchEmail);
       setMyBookings(res.data);
       if (res.data.length === 0) toast.error("No history found.");
-    } catch (err) { toast.error("Failed to retrieve stays."); }
+    } catch (err) {
+      const errData = err.response?.data;
+      let errorMsg = "Failed to retrieve stays. Please try again.";
+      if (errData) {
+        if (typeof errData === "string") {
+          errorMsg = errData;
+        } else if (errData.errors) {
+          const errorList = Object.values(errData.errors).flat();
+          errorMsg = errorList.length > 0 ? errorList[0] : "Invalid email format.";
+        } else if (errData.message) {
+          errorMsg = errData.message;
+        }
+      }
+      toast.error(errorMsg);
+    }
     finally { setFetchingHistory(false); }
   };
 
@@ -77,17 +150,26 @@ const Home = () => {
     setBookingLoading(true);
     setApiError("");
     try {
-      let guestId;
-      try {
-        const existingRes = await getGuestByEmail(guestForm.email);
-        guestId = existingRes.data.guestId || existingRes.data.GuestId;
-      } catch (e) {
-        const newGuestRes = await addGuest({
-          FullName: guestForm.fullName, Email: guestForm.email,
-          Phone: guestForm.phone, Address: guestForm.address,
-          IdproofType: guestForm.idproofType, IdproofNumber: guestForm.idproofNumber
-        });
-        guestId = newGuestRes.data.guestId || newGuestRes.data.GuestId;
+      let guestId = verifiedGuestId;
+
+      if (!isReturningGuest) {
+          // If it's a new guest, create them
+          try {
+            const newGuestRes = await addGuest({
+              FullName: guestForm.fullName, Email: guestForm.email,
+              Phone: guestForm.phone, Address: guestForm.address,
+              IdproofType: guestForm.idproofType, IdproofNumber: guestForm.idproofNumber
+            });
+            guestId = newGuestRes.data.guestId || newGuestRes.data.GuestId;
+          } catch (e) {
+             throw e; // Pass to main catch block
+          }
+      }
+
+      if (!guestId) {
+          toast.error("Please verify your guest profile first.");
+          setBookingLoading(false);
+          return;
       }
 
       await addBooking({
@@ -100,18 +182,27 @@ const Home = () => {
       setTimeout(() => {
         setBookingSuccess(false); setSelectedRoom(null); setShowForm(false); setRooms([]);
         setGuestForm({ fullName: "", email: "", phone: "", address: "", idproofType: "Aadhar", idproofNumber: "" });
+        setVerifiedGuestId(null);
+        setIsReturningGuest(false);
       }, 3500);
     } catch (err) {
-      let errorText = "Booking failed.";
-      if (err.response?.data) {
+      let errorText = "Booking failed. Please try again.";
+      if (err?.response?.data) {
         const data = err.response.data;
-        if (typeof data === 'string') errorText = data;
-        else if (data.errors) errorText = Array.isArray(data.errors) ? data.errors[0] : Object.values(data.errors)[0][0];
-        else if (data.message) errorText = data.message;
+        if (typeof data === 'string') {
+          errorText = data;
+        } else if (data.errors) {
+          const errorList = Object.values(data.errors).flat();
+          errorText = errorList.length > 0 ? errorList[0] : "Validation failed.";
+        } else if (data.message) {
+          errorText = data.message;
+        }
       }
       setApiError(errorText);
       toast.error(errorText);
-    } finally { setBookingLoading(false); }
+    } finally { 
+      setBookingLoading(false); 
+    }
   };
 
   const DEFAULT_IMG = "https://images.unsplash.com/photo-1618773928121-c32242e63f39?q=80&w=1000";
@@ -122,16 +213,32 @@ const Home = () => {
       <div className={`relative transition-all duration-700 ${selectedRoom ? 'h-[45vh]' : 'h-[65vh]'} flex items-center justify-center overflow-hidden`}>
         <img src="https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?q=80&w=2000" className="absolute inset-0 w-full h-full object-cover" alt="Hero" />
         <div className="absolute inset-0 bg-black/50"></div>
+        
+        {/* Sleek Floating Guest Header Overlay */}
+        <div className="absolute top-0 left-0 w-full p-6 px-8 flex justify-between items-center z-30 select-none">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+              <Hotel size={18} strokeWidth={2.5} />
+            </div>
+            <span className="text-xl font-black text-white tracking-tight">
+              Seren<span className="text-blue-400">Stay</span>
+            </span>
+          </div>
+          <Link to="/login" className="flex items-center gap-2 bg-white/10 backdrop-blur-md text-white border border-white/20 px-4 py-2 rounded-xl text-xs font-bold hover:bg-white hover:text-slate-900 transition-all duration-300 shadow-sm">
+            <UserCircle size={15} />
+            <span>Staff Login</span>
+          </Link>
+        </div>
+
         <div className="relative z-10 text-center text-white px-4">
-          {/* Quick Access Profile Link */}
           <button 
             onClick={() => document.getElementById('my-profile-section').scrollIntoView({ behavior: 'smooth' })}
             className="mb-6 mx-auto flex items-center gap-2 bg-white/10 backdrop-blur-md px-4 py-2 rounded-full border border-white/20 text-xs font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-all"
           >
             <UserCircle size={16} /> My Bookings
           </button>
-          <h1 className="text-5xl md:text-7xl font-black tracking-tighter mb-4">Serene Stay</h1>
-          {!selectedRoom && <p className="text-lg font-medium opacity-80 uppercase tracking-widest">Experience True Tranquility</p>}
+          <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-4">SerenStay</h1>
+          {!selectedRoom && <p className="text-lg font-medium opacity-90">Your Perfect Stay Awaits</p>}
         </div>
       </div>
 
@@ -156,7 +263,7 @@ const Home = () => {
               <input type="number" min="0" value={children} onChange={(e) => setChildren(Number(e.target.value))} className="w-full bg-gray-50 p-4 rounded-xl border-none font-bold mt-1 outline-none" />
             </div>
             <div className="md:col-span-2">
-              <button onClick={handleSearch} disabled={loading} className="w-full bg-blue-600 text-white h-[60px] rounded-2xl font-black hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 uppercase text-xs tracking-widest">
+              <button onClick={handleSearch} disabled={loading} className="w-full bg-blue-600 text-white h-[60px] rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 text-sm">
                 {loading ? "..." : "Search"}
               </button>
             </div>
@@ -168,21 +275,21 @@ const Home = () => {
       <main className="max-w-7xl mx-auto px-8 py-16">
         {selectedRoom ? (
           <div className="animate-in fade-in slide-in-from-bottom-8 duration-500">
-            <button onClick={() => setSelectedRoom(null)} className="flex items-center gap-2 text-gray-400 hover:text-blue-600 mb-8 font-black text-xs uppercase tracking-widest transition-colors">
+            <button onClick={() => setSelectedRoom(null)} className="flex items-center gap-2 text-gray-500 hover:text-blue-600 mb-8 font-semibold text-sm transition-colors">
               <ArrowLeft size={18} /> Back to Search
             </button>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 bg-white rounded-[3rem] p-6 border border-gray-100 shadow-sm">
               <div className="h-[500px] rounded-[2.5rem] overflow-hidden shadow-2xl"><img src={DEFAULT_IMG} className="w-full h-full object-cover" alt="Suite" /></div>
               <div className="py-8 pr-4">
                 <div className="flex justify-between items-start mb-6">
-                  <div><h2 className="text-5xl font-black text-gray-900 tracking-tighter">{selectedRoom.roomTypeName}</h2><p className="text-blue-600 font-bold mt-2 uppercase text-xs tracking-widest">Premium suite #{selectedRoom.roomNumber}</p></div>
-                  <div className="text-right"><p className="text-4xl font-black text-gray-900">₹{selectedRoom.pricePerNight}</p><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Per Night</p></div>
+                  <div><h2 className="text-4xl font-bold text-gray-900 tracking-tight">{selectedRoom.roomTypeName}</h2><p className="text-blue-600 font-semibold mt-2 text-sm">Premium suite #{selectedRoom.roomNumber}</p></div>
+                  <div className="text-right"><p className="text-3xl font-bold text-gray-900">₹{selectedRoom.pricePerNight}</p><p className="text-xs font-semibold text-gray-500 mt-1">Per Night</p></div>
                 </div>
                 <div className="grid grid-cols-2 gap-4 mb-10">
                   <Facility icon={<Wifi size={18}/>} label="Fast Wi-Fi" /><Facility icon={<Wind size={18}/>} label="Climate Control" />
                   <Facility icon={<Tv size={18}/>} label="Smart TV" /><Facility icon={<Coffee size={18}/>} label="Mini Bar" />
                 </div>
-                <button onClick={() => setShowForm(true)} className="w-full py-5 bg-gray-900 text-white rounded-2xl font-black text-lg shadow-2xl hover:bg-blue-600 transition-all active:scale-95">Reserve Sanctuary</button>
+                <button onClick={() => setShowForm(true)} className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold text-lg shadow-xl hover:bg-blue-600 transition-all active:scale-95">Book This Room</button>
               </div>
             </div>
           </div>
@@ -195,7 +302,13 @@ const Home = () => {
                   <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-4 py-1.5 rounded-2xl font-black text-sm text-gray-900 shadow-sm">₹{room.pricePerNight}</div>
                 </div>
                 <div className="p-8"><div className="flex items-center gap-2 mb-2">{[1,2,3,4,5].map(s => <Star key={s} size={10} className="fill-yellow-400 text-yellow-400" />)}</div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">{room.roomTypeName}</h3><div className="flex justify-between items-center text-gray-400 text-[10px] font-black uppercase tracking-[0.1em]"><span>Suite #{room.roomNumber}</span><span className="bg-slate-50 px-2 py-1 rounded-md">Max {room.maxOccupancy} Guests</span></div></div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">{room.roomTypeName}</h3>
+                <div className="flex gap-2 mb-4 flex-wrap">
+                  <div className="flex items-center gap-1 bg-gray-50 text-gray-600 px-2 py-1 rounded-lg text-[11px] font-semibold" title="High-Speed Wi-Fi"><Wifi size={12}/></div>
+                  <div className="flex items-center gap-1 bg-gray-50 text-gray-600 px-2 py-1 rounded-lg text-[11px] font-semibold" title="4K Smart TV"><Tv size={12}/></div>
+                  <div className="flex items-center gap-1 bg-gray-50 text-gray-600 px-2 py-1 rounded-lg text-[11px] font-semibold" title="Mini Bar"><Coffee size={12}/></div>
+                </div>
+                <div className="flex justify-between items-center text-gray-500 text-xs font-semibold"><span>Suite #{room.roomNumber}</span><span className="bg-slate-50 px-2 py-1 rounded-md">Max {room.maxOccupancy} Guests</span></div></div>
               </div>
             ))}
           </div>
@@ -204,8 +317,8 @@ const Home = () => {
         {/* --- TRACK MY STAY (GUEST PROFILE AREA) --- */}
         <div id="my-profile-section" className="mt-32 pt-20 border-t border-gray-200">
             <div className="text-center mb-12">
-                <h2 className="text-4xl font-black tracking-tighter text-gray-900 uppercase">Track My Stay</h2>
-                <p className="text-gray-400 font-bold text-xs uppercase tracking-widest mt-2">Access your reservations and stay details instantly</p>
+                <h2 className="text-3xl font-bold tracking-tight text-gray-900">My Reservations</h2>
+                <p className="text-gray-500 font-medium text-sm mt-2">Access your reservations instantly</p>
             </div>
             <div className="max-w-2xl mx-auto bg-white p-4 rounded-[2.5rem] shadow-xl flex items-center gap-4 border border-gray-100 mb-16">
                 <div className="flex-1 relative">
@@ -222,26 +335,26 @@ const Home = () => {
                         <div key={b.bookingId} className="bg-white border border-gray-100 p-10 rounded-[3rem] shadow-sm flex flex-col hover:shadow-xl transition-all relative overflow-hidden group">
                             <div className="flex justify-between items-start mb-8">
                                 <div>
-                                  <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-3 py-1.5 rounded-xl mb-3 inline-block font-mono">#{b.bookingId}</span>
-                                  <h4 className="text-2xl font-black text-gray-900">Room {b.roomNumber}</h4>
+                                  <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl mb-3 inline-block font-mono">{b.bookingId}</span>
+                                  <h4 className="text-xl font-bold text-gray-900">Room {b.roomNumber}</h4>
                                 </div>
-                                <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${b.bookingStatus === "Booked" ? "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-600/20" : "bg-gray-100 text-gray-600"}`}>
+                                <span className={`px-4 py-1.5 rounded-full text-xs font-bold ${b.bookingStatus === "Booked" ? "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-600/20" : "bg-gray-100 text-gray-600"}`}>
                                   {b.bookingStatus}
                                 </span>
                             </div>
                             <div className="flex items-center justify-between text-gray-500 bg-gray-50 p-6 rounded-[2rem] border border-gray-100 mb-8">
-                                <div className="text-center"><p className="text-[10px] font-black uppercase text-gray-400 mb-1">Check In</p><p className="text-sm font-black text-gray-900">{new Date(b.checkInDate).toLocaleDateString()}</p></div>
+                                <div className="text-center"><p className="text-xs font-medium text-gray-500 mb-1">Check In</p><p className="text-sm font-bold text-gray-900">{new Date(b.checkInDate).toLocaleDateString()}</p></div>
                                 <ArrowLeft className="rotate-180 text-blue-200" size={24} />
-                                <div className="text-center"><p className="text-[10px] font-black uppercase text-gray-400 mb-1">Check Out</p><p className="text-sm font-black text-gray-900">{new Date(b.checkOutDate).toLocaleDateString()}</p></div>
+                                <div className="text-center"><p className="text-xs font-medium text-gray-500 mb-1">Check Out</p><p className="text-sm font-bold text-gray-900">{new Date(b.checkOutDate).toLocaleDateString()}</p></div>
                             </div>
                             <div className="flex justify-between items-center pt-2">
                               <div className="flex items-center gap-3">
-                                <div className="h-10 w-10 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg">
+                                <div className="h-10 w-10 bg-gradient-to-tr from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white shadow-lg">
                                   <UserCircle size={20}/>
                                 </div>
-                                <span className="text-xs font-black text-gray-500 uppercase tracking-tighter">{b.guestName}</span>
+                                <span className="text-sm font-semibold text-gray-700">{b.guestName}</span>
                               </div>
-                              <p className="text-xl font-black text-gray-900 tracking-tighter">₹{b.totalAmount?.toLocaleString()}</p>
+                              <p className="text-xl font-bold text-gray-900 tracking-tight">₹{b.totalAmount?.toLocaleString()}</p>
                             </div>
                         </div>
                     ))}
@@ -259,15 +372,62 @@ const Home = () => {
               <div className="text-center py-10"><div className="h-24 w-24 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-8 text-green-500"><CheckCircle size={48} /></div><h2 className="text-3xl font-black text-gray-900 mb-2">Reserved!</h2><p className="text-gray-500 mt-2">Your suite is waiting for you.</p></div>
             ) : (
               <div className="space-y-8">
-                <div className="flex justify-between items-start"><div><h2 className="text-3xl font-black text-gray-900 tracking-tighter uppercase">Guest Details</h2><p className="text-blue-600 text-xs font-black uppercase tracking-widest mt-2">{selectedRoom.roomTypeName} • Room #{selectedRoom.roomNumber}</p></div><button onClick={() => setShowForm(false)} className="p-3 hover:bg-gray-100 rounded-full text-gray-400"><X size={24}/></button></div>
-                {apiError && <div className="bg-red-50 text-red-600 p-5 rounded-2xl text-xs font-bold border border-red-100 flex items-center gap-3 animate-shake"><AlertCircle size={16} /> {apiError}</div>}
-                <div className="space-y-4">
-                   <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Full Legal Name</label><input value={guestForm.fullName} onChange={(e) => setGuestForm({...guestForm, fullName: e.target.value})} className="w-full bg-gray-50 p-5 rounded-[1.5rem] outline-none focus:ring-2 focus:ring-blue-500/20 font-bold border border-transparent focus:bg-white focus:border-blue-100 transition-all" placeholder="John Doe" /></div>
-                   <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Email</label><input type="email" value={guestForm.email} onChange={(e) => setGuestForm({...guestForm, email: e.target.value})} className="w-full bg-gray-50 p-5 rounded-[1.5rem] outline-none font-bold" placeholder="john@doe.com" /></div><div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Phone</label><input type="tel" value={guestForm.phone} onChange={(e) => setGuestForm({...guestForm, phone: e.target.value})} className="w-full bg-gray-50 p-5 rounded-[1.5rem] outline-none font-bold" placeholder="+91..." /></div></div>
-                   <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Address</label><input value={guestForm.address} onChange={(e) => setGuestForm({...guestForm, address: e.target.value})} className="w-full bg-gray-50 p-5 rounded-[1.5rem] outline-none font-bold" placeholder="Full Residence" /></div>
-                   <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">ID Type</label><select value={guestForm.idproofType} onChange={(e) => setGuestForm({...guestForm, idproofType: e.target.value})} className="w-full bg-gray-50 p-5 rounded-[1.5rem] border-none font-bold appearance-none"><option>Aadhar</option><option>Passport</option><option>Voter ID</option></select></div><div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">ID Number</label><input value={guestForm.idproofNumber} onChange={(e) => setGuestForm({...guestForm, idproofNumber: e.target.value})} className="w-full bg-gray-50 p-5 rounded-[1.5rem] outline-none font-bold" placeholder="ID Number" /></div></div>
+                <div className="flex justify-between items-start mb-2"><div><h2 className="text-3xl font-black text-gray-900 tracking-tighter uppercase">Guest Details</h2><p className="text-blue-600 text-xs font-black uppercase tracking-widest mt-2">{selectedRoom.roomTypeName} • Room #{selectedRoom.roomNumber}</p></div><button onClick={() => setShowForm(false)} className="p-3 hover:bg-gray-100 rounded-full text-gray-400"><X size={24}/></button></div>
+                
+                {/* NEW/RETURNING TOGGLE */}
+                <div className="flex bg-gray-100 p-1.5 rounded-2xl mb-6">
+                  <button onClick={() => handleToggleGuestType(false)} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${!isReturningGuest ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-900'}`}>New Guest</button>
+                  <button onClick={() => handleToggleGuestType(true)} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${isReturningGuest ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-900'}`}>Returning</button>
                 </div>
-                <div className="pt-4"><button onClick={handleFinalBooking} disabled={bookingLoading || !guestForm.fullName} className="w-full py-6 bg-blue-600 text-white rounded-[1.8rem] font-black shadow-2xl shadow-blue-100 hover:bg-blue-700 disabled:bg-gray-200 transition-all flex items-center justify-center gap-3 active:scale-95 uppercase text-xs tracking-widest">{bookingLoading ? "Securing Stay..." : <><CreditCard size={20}/> Confirm & Reserve</>}</button><p className="text-[10px] text-center text-gray-400 mt-5 font-bold uppercase tracking-widest flex items-center justify-center gap-1"><ShieldCheck size={10} /> Secure Booking Enabled</p></div>
+                
+                {/* TOKEN INFO BLOCK */}
+                <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-[2rem] flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-100"><Wallet size={20}/></div>
+                    <div>
+                      <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Confirmation Token</p>
+                      <p className="text-sm font-black text-indigo-900">Advance Deposit</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-black text-indigo-600 tracking-tighter">₹500</p>
+                    <p className="text-[9px] font-bold text-indigo-400 uppercase">Payable at Check-in</p>
+                  </div>
+                </div>
+
+                {apiError && <div className="bg-red-50 text-red-600 p-5 rounded-2xl text-xs font-bold border border-red-100 flex items-center gap-3 animate-shake"><AlertCircle size={16} /> {apiError}</div>}
+                
+                {isReturningGuest ? (
+                  <div className="space-y-6">
+                     <div className="space-y-1">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Registered Email</label>
+                        <div className="flex gap-2">
+                           <input type="email" value={guestForm.email} onChange={(e) => setGuestForm({...guestForm, email: e.target.value})} className="w-full bg-gray-50 p-5 rounded-[1.5rem] outline-none font-bold focus:ring-2 focus:ring-blue-500/20" placeholder="your@email.com" />
+                           <button type="button" onClick={() => handleEmailLookup(guestForm.email)} className="bg-gray-900 text-white px-6 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-blue-600 transition-all">Find</button>
+                        </div>
+                     </div>
+                     
+                     {verifiedGuestId && (
+                       <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-[2rem] animate-in fade-in slide-in-from-top-4">
+                          <div className="flex items-center gap-2 mb-4 text-emerald-600"><CheckCircle size={18}/><span className="text-xs font-black uppercase tracking-widest">Profile Verified</span></div>
+                          <div className="space-y-3">
+                             <div><p className="text-[10px] text-emerald-600/60 font-black uppercase tracking-widest">Full Name</p><p className="font-bold text-emerald-900">{guestForm.fullName}</p></div>
+                             <div><p className="text-[10px] text-emerald-600/60 font-black uppercase tracking-widest">Phone</p><p className="font-bold text-emerald-900">{guestForm.phone}</p></div>
+                             <div><p className="text-[10px] text-emerald-600/60 font-black uppercase tracking-widest">{guestForm.idproofType}</p><p className="font-bold text-emerald-900">{guestForm.idproofNumber}</p></div>
+                          </div>
+                       </div>
+                     )}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                     <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Full Legal Name</label><input value={guestForm.fullName} onChange={(e) => setGuestForm({...guestForm, fullName: e.target.value})} className="w-full bg-gray-50 p-5 rounded-[1.5rem] outline-none focus:ring-2 focus:ring-blue-500/20 font-bold border border-transparent focus:bg-white focus:border-blue-100 transition-all" placeholder="John Doe" /></div>
+                     <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Email</label><input type="email" value={guestForm.email} onChange={(e) => setGuestForm({...guestForm, email: e.target.value})} className="w-full bg-gray-50 p-5 rounded-[1.5rem] outline-none font-bold focus:ring-2 focus:ring-blue-500/20" placeholder="john@doe.com" /></div><div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Phone</label><input type="tel" value={guestForm.phone} onChange={(e) => setGuestForm({...guestForm, phone: e.target.value})} className="w-full bg-gray-50 p-5 rounded-[1.5rem] outline-none font-bold focus:ring-2 focus:ring-blue-500/20" placeholder="+91..." /></div></div>
+                     <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Address</label><input value={guestForm.address} onChange={(e) => setGuestForm({...guestForm, address: e.target.value})} className="w-full bg-gray-50 p-5 rounded-[1.5rem] outline-none font-bold focus:ring-2 focus:ring-blue-500/20" placeholder="Full Residence" /></div>
+                     <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">ID Type</label><select value={guestForm.idproofType} onChange={(e) => setGuestForm({...guestForm, idproofType: e.target.value})} className="w-full bg-gray-50 p-5 rounded-[1.5rem] border-none font-bold appearance-none"><option>Aadhar</option><option>Passport</option><option>Voter ID</option></select></div><div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">ID Number</label><input value={guestForm.idproofNumber} onChange={(e) => setGuestForm({...guestForm, idproofNumber: e.target.value})} className="w-full bg-gray-50 p-5 rounded-[1.5rem] outline-none font-bold focus:ring-2 focus:ring-blue-500/20" placeholder="ID Number" /></div></div>
+                  </div>
+                )}
+                
+                <div className="pt-4"><button onClick={handleFinalBooking} disabled={bookingLoading || (isReturningGuest ? !verifiedGuestId : !guestForm.fullName)} className="w-full py-6 bg-blue-600 text-white rounded-[1.8rem] font-black shadow-2xl shadow-blue-100 hover:bg-blue-700 disabled:bg-gray-200 transition-all flex items-center justify-center gap-3 active:scale-95 uppercase text-xs tracking-widest">{bookingLoading ? "Securing Stay..." : <><CreditCard size={20}/> Confirm & Reserve</>}</button><p className="text-[10px] text-center text-gray-400 mt-5 font-bold uppercase tracking-widest flex items-center justify-center gap-1"><ShieldCheck size={10} /> By reserving, you agree to the ₹500 token policy.</p></div>
               </div>
             )}
           </div>
@@ -280,7 +440,7 @@ const Home = () => {
 const Facility = ({ icon, label }) => (
   <div className="flex items-center gap-4 p-5 bg-gray-50 rounded-2xl border border-gray-100 group hover:bg-blue-50 transition-colors">
     <div className="text-blue-500 group-hover:scale-110 transition-transform">{icon}</div>
-    <span className="text-xs font-black text-gray-700 uppercase tracking-tighter">{label}</span>
+    <span className="text-sm font-semibold text-gray-700">{label}</span>
   </div>
 );
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { getAllGuests, addGuest, updateGuest, deleteGuest } from "../../api/guest.api";
-import { Trash2, UserPlus, Mail, Phone, BadgeCheck, X, Edit3, User } from "lucide-react";
+import { Trash2, UserPlus, Mail, Phone, BadgeCheck, X, Edit3, User, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import toast from "react-hot-toast";
 
 const Guests = () => {
@@ -8,6 +8,13 @@ const Guests = () => {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingGuest, setEditingGuest] = useState(null);
+
+  // --- NEW PAGINATION & SEARCH STATES ---
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [totalRecords, setTotalRecords] = useState(0);
+  const pageSize = 5;
+
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -17,21 +24,29 @@ const Guests = () => {
     idproofNumber: "",
   });
 
+  // Re-fetch data whenever page or search changes
   useEffect(() => {
     loadGuests();
-  }, []);
+  }, [page, search]);
 
   const loadGuests = async () => {
     try {
       setLoading(true);
-      const res = await getAllGuests();
-      setGuests(res.data);
+      // Passing page, pageSize, and search to match your updated backend
+      const res = await getAllGuests(page, pageSize, search);
+      
+      // Update states based on PagedResponse<T> structure
+      setGuests(res.data.data || []);
+      setTotalRecords(res.data.totalRecords || 0);
     } catch (error) {
       toast.error("Failed to load guests");
+      setGuests([]);
     } finally {
       setLoading(false);
     }
   };
+
+  const totalPages = Math.ceil(totalRecords / pageSize);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -114,17 +129,32 @@ const Guests = () => {
           </h1>
           <p className="text-gray-500 mt-1">Manage guest profiles, contact details, and identification.</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200">
-            <span className="text-sm font-medium text-gray-600">Total Guests: </span>
-            <span className="text-blue-600 font-bold">{guests.length}</span>
+
+        <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+          {/* SEARCH INPUT */}
+          <div className="relative w-full md:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <input 
+              type="text"
+              placeholder="Search name, email, phone..."
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/10 transition-all text-sm"
+            />
           </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all font-bold text-sm"
-          >
-            <UserPlus size={18} /> Register Guest
-          </button>
+
+          <div className="flex items-center gap-4 w-full md:w-auto">
+            <div className="bg-white px-4 py-2.5 rounded-xl shadow-sm border border-gray-200 hidden md:block">
+              <span className="text-sm font-medium text-gray-600">Total: </span>
+              <span className="text-blue-600 font-bold">{totalRecords}</span>
+            </div>
+            <button
+              onClick={() => setShowModal(true)}
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all font-bold text-sm"
+            >
+              <UserPlus size={18} /> Register Guest
+            </button>
+          </div>
         </div>
       </div>
 
@@ -203,11 +233,32 @@ const Guests = () => {
               </tbody>
             </table>
           </div>
-          {guests.length === 0 && (
-            <div className="py-20 text-center">
-              <p className="text-gray-400 text-sm font-medium">No guest records found in the system.</p>
+
+          {/* --- PAGINATION FOOTER --- */}
+          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+            <p className="text-sm text-gray-500 font-medium">
+              Showing <span className="text-gray-900">{guests.length}</span> of <span className="text-gray-900">{totalRecords}</span> results
+            </p>
+            <div className="flex gap-2">
+              <button
+                disabled={page === 1}
+                onClick={() => setPage(p => p - 1)}
+                className="p-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50 transition-all text-gray-600"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <div className="flex items-center px-4 text-sm font-bold text-gray-700">
+                Page {page} of {totalPages || 1}
+              </div>
+              <button
+                disabled={page >= totalPages}
+                onClick={() => setPage(p => p + 1)}
+                className="p-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50 transition-all text-gray-600"
+              >
+                <ChevronRight size={18} />
+              </button>
             </div>
-          )}
+          </div>
         </div>
       )}
 

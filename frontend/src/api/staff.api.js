@@ -1,7 +1,9 @@
 import api from "./axios";
 
-const getAllStaff = () => {
-  return api.get("/Staff/GetAllStaff");
+const getAllStaff = (page = 1, pageSize = 5, search = "") => {
+  return api.get(`/Staff/GetAllStaff`, {
+    params: { page, pageSize, search }
+  });
 };
 
 const getStaffById = (id) => {

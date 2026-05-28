@@ -1,4 +1,5 @@
-﻿using HotelManagementSystem.DTO;
+using HotelManagementSystem.DTO;
+using HotelManagementSystem.Helper;
 using HotelManagementSystem.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -9,7 +10,7 @@ namespace HotelManagementSystem.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    //[Authorize]
+    [Authorize]
     public class BookingController : ControllerBase
     {
         private readonly HotelManagementSystemContext _context;
@@ -20,6 +21,7 @@ namespace HotelManagementSystem.Controllers
 
         #region AddBooking
         // POST: api/Booking/AddBooking
+        [AllowAnonymous]
         [HttpPost("AddBooking")]
         public async Task<IActionResult> AddBooking([FromBody] BookingCreateDTO bookingDto)
         {
@@ -58,12 +60,24 @@ namespace HotelManagementSystem.Controllers
         #region GelAllBookings
         // GET: api/Booking/GetAllBookings
         [HttpGet("GetAllBookings")]
-        public async Task<IActionResult> GetAllBookings()
+        public async Task<IActionResult> GetAllBookings(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 5,
+            [FromQuery] string search = ""
+        )
         {
             try
             {
-                var bookings = await _context.Bookings
-                    .Include(b => b.Guest)
+                var query = _context.Bookings.Include(b => b.Guest).AsQueryable();
+
+                if (!string.IsNullOrEmpty(search))
+                {
+                    string s = search.ToLower();
+                    query = query.Where(b => b.Guest.FullName.ToLower().Contains(s) ||
+                                             b.Status.ToLower().Contains(s));
+                }
+
+                var projection = query.OrderByDescending(b => b.BookingId)
                     .Select(b => new BookingDisplayDTO
                     {
                         BookingId = b.BookingId,
@@ -75,10 +89,11 @@ namespace HotelManagementSystem.Controllers
                         Status = b.Status,
                         AdvancePaid = b.AdvancePaid,
                         CreatedAt = (DateTime)b.CreatedAt
-                    })
-                    .ToListAsync();
+                    });
 
-                return Ok(bookings);
+                var result = await projection.ToPagedResponseAsync(page, pageSize);
+
+                return Ok(result);
             }
             catch (Exception ex)
             {
@@ -161,6 +176,7 @@ namespace HotelManagementSystem.Controllers
 
         #region DeleteBooking
         // DELETE: api/Booking/DeleteBooking/{id}
+        [Authorize(Roles = "Manager")]
         [HttpDelete("DeleteBooking/{id}")]
         public async Task<IActionResult> DeleteBooking(int id)
         {
@@ -187,46 +203,104 @@ namespace HotelManagementSystem.Controllers
         #region GetAllBookingsWithInvoices
         // GET: api/Booking/GetAllBookingsWithInvoices
         [HttpGet("GetAllBookingsWithInvoices")]
-        public async Task<IActionResult> GetAllBookingsWithInvoices()
+        public async Task<IActionResult> GetAllBookingsWithInvoices(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 5,
+            [FromQuery] string search = ""
+        )
         {
             try
             {
-                var summary = await _context.Bookings
+                var query = _context.Bookings
                     .Include(b => b.Guest)
                     .Include(b => b.Room)
                     .Include(b => b.Invoices)
+                    .AsQueryable();
+
+                if (!string.IsNullOrEmpty(search))
+                {
+                    string s = search.ToLower();
+                    query = query.Where(b => b.Guest.FullName.ToLower().Contains(s) ||
+                                             b.Status.ToLower().Contains(s) ||
+                                             b.Room.RoomNumber.ToString().Contains(s));
+                }
+
+                var projection = query.OrderByDescending(b => b.BookingId)
                     .Select(b => new BookingInvoiceSummaryForStaffDTO
                     {
                         BookingId = b.BookingId,
-                        GuestName = b.Guest.FullName,
-                        RoomNumber = b.Room.RoomNumber,
+                        GuestName = b.Guest != null ? b.Guest.FullName : "Unknown",
+                        RoomNumber = b.Room != null ? b.Room.RoomNumber : 0,
                         CheckInDate = b.CheckInDate,
                         CheckOutDate = b.CheckOutDate,
                         BookingStatus = b.Status,
 
                         InvoiceId = b.Invoices.Select(i => i.InvoiceId).FirstOrDefault(),
-                        TotalAmount = b.Invoices.Select(i => i.TotalAmount).FirstOrDefault(),
+                        TotalAmount = b.Invoices.Select(i => (decimal?)i.TotalAmount).FirstOrDefault() ?? 0m,
 
-                        PaidAmount = (decimal)b.Invoices.Select(i => i.PaidAmount).FirstOrDefault(),
+                        PaidAmount = b.Invoices.Any()
+                             ? b.Invoices.Select(i => (decimal?)i.PaidAmount).FirstOrDefault() ?? 500m
+                             : (b.AdvancePaid == 0 || b.AdvancePaid == null) ? 500m : b.AdvancePaid,
 
-                        PaymentStatus = b.Invoices.Select(i => i.PaymentStatus).FirstOrDefault(),
+                        PaymentStatus = b.Invoices.Select(i => i.PaymentStatus).FirstOrDefault() ?? "No Invoice",
                         InvoiceDate = b.Invoices.Select(i => i.InvoiceDate).FirstOrDefault()
-                    })
-                    .OrderByDescending(b => b.CheckInDate)
-                    .ToListAsync();
+                    });
 
-                return Ok(summary);
+                var result = await projection.ToPagedResponseAsync(page, pageSize);
+
+                return Ok(result);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, ex.Message);
+                return StatusCode(500, $"Internal Error: {ex.Message}");
             }
         }
+        //[HttpGet("GetAllBookingsWithInvoices")]
+        //public async Task<IActionResult> GetAllBookingsWithInvoices()
+        //{
+        //    try
+        //    {
+        //        var summary = await _context.Bookings
+        //            .Include(b => b.Guest)
+        //            .Include(b => b.Room)
+        //            .Include(b => b.Invoices)
+        //            .Select(b => new BookingInvoiceSummaryForStaffDTO
+        //            {
+        //                BookingId = b.BookingId,
+        //                GuestName = b.Guest != null ? b.Guest.FullName : "Unknown",
+        //                RoomNumber = b.Room != null ? b.Room.RoomNumber : 000,
+        //                CheckInDate = b.CheckInDate,
+        //                CheckOutDate = b.CheckOutDate,
+        //                BookingStatus = b.Status,
+
+        //                // SAFE MAPPING FOR INVOICE DATA
+        //                InvoiceId = b.Invoices.Select(i => i.InvoiceId).FirstOrDefault(),
+
+        //                // Use ?? 0 to ensure decimal? doesn't crash the DTO
+        //                TotalAmount = b.Invoices.Select(i => i.TotalAmount ?? 0m).FirstOrDefault(),
+        //                PaidAmount = b.Invoices.Any()
+        //                     ? b.Invoices.Select(i => i.PaidAmount ?? 500m).FirstOrDefault()
+        //                     : (b.AdvancePaid == 0 || b.AdvancePaid == null) ? 500m : b.AdvancePaid,
+
+        //                PaymentStatus = b.Invoices.Select(i => i.PaymentStatus).FirstOrDefault() ?? "No Invoice",
+        //                InvoiceDate = b.Invoices.Select(i => i.InvoiceDate).FirstOrDefault()
+        //            })
+        //            .OrderByDescending(b => b.CheckInDate)
+        //            .ToListAsync();
+
+        //        return Ok(summary);
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        return StatusCode(500, $"Internal Error: {ex.Message}");
+        //    }
+        //}
         #endregion
 
         #region GetBookingsByEmail
         // GET: api/Booking/GetBookingsByEmail{email}
         [HttpGet("GetBookingsByEmail/{email}")]
+        [AllowAnonymous]
         public async Task<IActionResult> GetBookingsByEmail(string email)
         {
             try

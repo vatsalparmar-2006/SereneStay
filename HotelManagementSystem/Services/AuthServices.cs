@@ -1,4 +1,5 @@
 ﻿using HotelManagementSystem.Models;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -10,7 +11,7 @@ public class AuthService : IAuthService
     private readonly HotelManagementSystemContext _context;
     private readonly IConfiguration _configuration;
 
-    public AuthService(HotelManagementSystemContext context, IConfiguration configuration)
+    public AuthService(HotelManagementSystemContext context, IConfiguration configuration, IPasswordHasher<Staff> passwordHasher)
     {
         _context = context;
         _configuration = configuration;
@@ -21,7 +22,7 @@ public class AuthService : IAuthService
         var jwtSettings = _configuration.GetSection("Jwt");
         var keyString = jwtSettings["Key"];
 
-        // 1. Validation: Ensure the key exists and is long enough (32+ chars for HS256)
+        // Validation: Ensure the key exists and is long enough (32+ chars for HS256)
         if (string.IsNullOrEmpty(keyString) || keyString.Length < 32)
         {
             throw new InvalidOperationException("JWT Secret Key is missing or too short. It must be at least 32 characters.");
@@ -30,20 +31,20 @@ public class AuthService : IAuthService
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyString));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-        // 2. Claims Mapping
+        // Claims Mapping
         var claims = new[]
         {
-        new Claim(JwtRegisteredClaimNames.Sub, staff.Username),
-        new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()), // Unique ID for the token
-        new Claim("FullName", staff.FullName),
-        new Claim("Role", staff.Role),
-        new Claim("StaffId", staff.StaffId.ToString())
-    };
+            new Claim(JwtRegisteredClaimNames.Sub, staff.Username),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new Claim("FullName", staff.FullName),
+            new Claim("StaffId", staff.StaffId.ToString()),
+    
+            new Claim(ClaimTypes.Role, staff.Role)
+        };
 
-        // 3. Expiry Logic
         var expiryMinutes = Convert.ToDouble(jwtSettings["TokenExpiryMinutes"] ?? "60");
 
-        // 
+
         var token = new JwtSecurityToken(
             issuer: jwtSettings["Issuer"],
             audience: jwtSettings["Audience"],
@@ -57,7 +58,6 @@ public class AuthService : IAuthService
 
     public async Task<object> LoginAsync(string username, string password)
     {
-        // Important: In production, use password hashing (e.g., BCrypt)
         var staff = await _context.Staffs
             .FirstOrDefaultAsync(s => s.Username == username && s.Password == password);
 

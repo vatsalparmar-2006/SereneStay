@@ -1,4 +1,5 @@
-﻿using HotelManagementSystem.DTO;
+using HotelManagementSystem.DTO;
+using HotelManagementSystem.Helper;
 using HotelManagementSystem.Models;
 using HotelManagementSystem.Pdf;
 using Microsoft.AspNetCore.Authorization;
@@ -88,20 +89,40 @@ namespace HotelManagementSystem.Controllers
         #region GetAllInvoices
         // GET: api/Invoices/GetAllInvoices
         [HttpGet("GetAllInvoices")]
-        public async Task<IActionResult> GetAllInvoices()
+        public async Task<IActionResult> GetAllInvoices(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 5,
+            [FromQuery] string search = ""
+        )
         {
             try
             {
-                var invoices = await _context.Invoices
+                var query = _context.Invoices
                     .Include(i => i.Booking).ThenInclude(b => b.Guest)
                     .Include(i => i.Booking).ThenInclude(b => b.Room)
                     .Include(i => i.Booking).ThenInclude(b => b.ServiceUsages)
                         .ThenInclude(s => s.Service)
-                    .ToListAsync();
+                    .AsQueryable();
 
-                var result = invoices.Select(invoice => MapToDisplayDto(invoice));
+                if (!string.IsNullOrEmpty(search))
+                {
+                    string s = search.ToLower();
+                    query = query.Where(i => i.Booking.Guest.FullName.ToLower().Contains(s) ||
+                                             i.InvoiceId.ToString() == s);
+                }
 
-                return Ok(result);
+                var pagedResult = await query
+                    .OrderByDescending(i => i.InvoiceId)
+                    .ToPagedResponseAsync(page, pageSize);
+
+                var mappedData = pagedResult.Data.Select(invoice => MapToDisplayDto(invoice)).ToList();
+
+                return Ok(new PagedResponse<InvoicesDisplayDTO>(
+                    mappedData,
+                    pagedResult.TotalRecords,
+                    pagedResult.PageNumber,
+                    pagedResult.PageSize
+                ));
             }
             catch (Exception ex)
             {
@@ -176,7 +197,6 @@ namespace HotelManagementSystem.Controllers
                 }
                 else
                 {
-                    // Auto-update status: if PaidAmount matches or exceeds NewTotal, mark as Paid
                     invoice.PaymentStatus = (invoice.PaidAmount >= newTotal) ? "Paid" : "Partially Paid";
                 }
 
@@ -229,20 +249,38 @@ namespace HotelManagementSystem.Controllers
         [HttpPatch("SettleBalance/{id}")]
         public async Task<IActionResult> SettleBalance(int id)
         {
+            var invoice = await _context.Invoices.FindAsync(id);
+
+            if (invoice == null)
+            {
+                return NotFound("Invoice not found");
+            }
+
+            invoice.PaidAmount = invoice.TotalAmount ?? 0;
+
+            invoice.PaymentStatus = "Paid";
+
+            var booking = await _context.Bookings.FindAsync(invoice.BookingId);
+            if (booking != null)
+            {
+                booking.Status = "Checked Out";
+            }
+
             try
             {
-                var invoice = await _context.Invoices.FindAsync(id);
-                if (invoice == null) return NotFound("Invoice not found");
-
-                // Update PaidAmount to match the Total
-                invoice.PaidAmount = (decimal)invoice.TotalAmount;
-                invoice.PaymentStatus = "Paid";
-                invoice.InvoiceDate = DateTime.Now;
-
+                _context.Invoices.Update(invoice);
                 await _context.SaveChangesAsync();
-                return Ok(new { message = "Balance settled successfully", status = invoice.PaymentStatus });
+
+                return Ok(new
+                {
+                    message = "Balance settled successfully",
+                    finalAmount = invoice.PaidAmount
+                });
             }
-            catch (Exception ex) { return StatusCode(500, ex.Message); }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error settling balance: {ex.Message}");
+            }
         }
         #endregion
 
@@ -261,38 +299,46 @@ namespace HotelManagementSystem.Controllers
                     InvoiceId = invoice.InvoiceId,
                     GuestName = booking?.Guest?.FullName ?? "Unknown Guest",
                     TotalAmount = invoice.TotalAmount ?? 0,
-                    PaidAmount = (decimal)invoice.PaidAmount,
+                    PaidAmount = invoice.PaidAmount ?? 0m, 
                     PaymentStatus = invoice.PaymentStatus ?? "Unknown"
                 };
             }
 
             int nights = Math.Max(1, (booking.CheckOutDate.ToDateTime(TimeOnly.MinValue)
-                         - booking.CheckInDate.ToDateTime(TimeOnly.MinValue)).Days);
+                                 - booking.CheckInDate.ToDateTime(TimeOnly.MinValue)).Days);
 
             return new InvoicesDisplayDTO
             {
                 InvoiceId = invoice.InvoiceId,
                 BookingId = invoice.BookingId,
-                GuestName = booking.Guest.FullName,
+                GuestName = booking.Guest?.FullName ?? "Unknown", 
                 Nights = nights,
                 RoomCharges = invoice.RoomCharges ?? 0,
                 ServiceCharges = invoice.ServiceCharges ?? 0,
                 TaxAmount = invoice.TaxAmount ?? 0,
                 TotalAmount = invoice.TotalAmount ?? 0,
-                PaidAmount = (decimal)invoice.PaidAmount, 
-                PaymentStatus = invoice.PaymentStatus,
-                PaymentMethod = invoice.PaymentMethod,
+                PaidAmount = invoice.PaidAmount ?? 0m,
+                PaymentStatus = invoice.PaymentStatus ?? "Partially Paid",
+                PaymentMethod = invoice.PaymentMethod ?? "Not Specified",
                 InvoiceDate = invoice.InvoiceDate,
+
                 Room = new RoomCreateDTO
                 {
                     RoomNumber = booking.Room.RoomNumber,
-                    PricePerNight = booking.Room.PricePerNight
+                    RoomTypeId = booking.Room.RoomTypeId ?? 0,
+                    PricePerNight = booking.Room.PricePerNight,
+                    MaxOccupancy = booking.Room.MaxOccupancy ?? 2
                 },
-                Services = booking.ServiceUsages.Select(s => new DisplayServicesDTO
+
+                Services = booking.ServiceUsages?.Select(s => new DisplayServicesDTO
                 {
-                    ServiceName = s.Service.ServiceName,
-                    ServicePrice = (decimal)s.Service.ServicePrice
-                }).ToList() ?? new List<DisplayServicesDTO>()
+                    ServiceId = s.ServiceId ?? 0,
+                    ServiceName = s.Service?.ServiceName ?? "Deleted Service",
+                    ServicePrice = s.Service?.ServicePrice ?? 0m
+                }).ToList() ?? new List<DisplayServicesDTO>(),
+
+                BookingStatus = booking.Status ?? "Unknown",
+                CheckOutDate = booking.CheckOutDate
             };
         }
         #endregion

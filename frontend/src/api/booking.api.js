@@ -5,7 +5,7 @@ export const addBooking = (data) => {
 };
 
 export const getAllBookings = () => {
-  return api.get("/Booking/GetAllBookings");
+  return api.get(`/Booking/GetAllBookings`);
 };
 
 export const getBookingById = (id) => {
@@ -20,8 +20,10 @@ export const deleteBooking = (id) => {
   return api.delete(`/Booking/DeleteBooking/${id}`);
 };
 
-export const getAllBookingsWithInvoices = () => {
-  return api.get("/Booking/GetAllBookingsWithInvoices");
+export const getAllBookingsWithInvoices = (page = 1, pageSize = 5, search = "") => {
+  return api.get(`/Booking/GetAllBookingsWithInvoices`, {
+    params: { page, pageSize, search }
+  });
 };
 
 export const getBookingsByEmail = (email) => {

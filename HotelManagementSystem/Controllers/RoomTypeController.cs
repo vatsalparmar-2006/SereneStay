@@ -1,4 +1,5 @@
-﻿using HotelManagementSystem.DTO;
+using HotelManagementSystem.DTO;
+using HotelManagementSystem.Helper;
 using HotelManagementSystem.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -19,8 +20,10 @@ namespace HotelManagementSystem.Controllers
             _context = context;
         }
 
+        #region AddRoomType
         // POST: api/RoomType/AddRoomType
         [HttpPost("AddRoomType")]
+        [Authorize(Roles = "Manager")]
         public async Task<IActionResult> AddRoomType([FromBody] RoomTypeCreateDTO typeDto)
         {
             try
@@ -52,31 +55,47 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region GetAllRoomType
         // GET: api/RoomType/AllRoomsType
         [HttpGet("AllRoomType")]
-        public async Task<IActionResult> GetAllRoomType()
+        public async Task<IActionResult> GetAllRoomType(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 5,
+            [FromQuery] string search = ""
+        )
         {
             try
             {
-                var types = await _context.RoomTypes
-                    .Select(t => new
-                    {
-                        t.RoomTypeId,
-                        t.TypeName,
-                        t.BedCounts,
-                        t.Description
-                    })
-                    .ToListAsync();
+                var query = _context.RoomTypes.AsQueryable();
 
-                return Ok(types);
+                if (!string.IsNullOrEmpty(search))
+                {
+                    string s = search.ToLower();
+                    query = query.Where(t => t.TypeName.ToLower().Contains(s) || t.Description.ToLower().Contains(s));
+                }
+
+                var pageResult = query.Select(t => new
+                {
+                    t.RoomTypeId,
+                    t.TypeName,
+                    t.BedCounts,
+                    t.Description
+                });
+
+                var reult = await pageResult.ToPagedResponseAsync(page, pageSize);
+
+                return Ok(reult);
             }
             catch (Exception ex)
             {
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region GetRoomTypeById
         // GET: api/RoomType/GetRoomTypeById/{id}
         [HttpGet("GetRoomTypeById/{id}")]
         public async Task<IActionResult> GetRoomTypeById(int id)
@@ -110,9 +129,12 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region UpdateRoomType
         // PUT: api/RoomType/UpdateRoomType/{id}
         [HttpPut("UpdateRoomType/{id}")]
+        [Authorize(Roles = "Manager")]
         public async Task<IActionResult> UpdateRoomType(int id, [FromBody] RoomTypeCreateDTO typeDto)
         {
             try
@@ -137,9 +159,12 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region DeleteRoomType
         // DELETE: api/RoomType/DeleteRoomType/{id}
         [HttpDelete("DeleteRoomType/{id}")]
+        [Authorize(Roles = "Manager")]
         public async Task<IActionResult> DeleteRoomType(int id)
         {
             try
@@ -161,5 +186,6 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
     }
 }

@@ -1,13 +1,23 @@
 import { useEffect, useState } from "react";
 import { getAllStaff, addStaff, updateStaff, deleteStaff } from "../../api/staff.api";
-import { UserPlus, Shield, Edit3, Trash2, X, User, Fingerprint } from "lucide-react";
+import { UserPlus, Shield, Edit3, Trash2, X, User, Fingerprint, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import toast from "react-hot-toast";
 
 const Staff = () => {
+  // --- ROLE ACCESS ---
+  const userRole = localStorage.getItem("userRole");
+  const isAdmin = userRole === "Admin" || userRole === "Manager";
   const [staff, setStaff] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingStaff, setEditingStaff] = useState(null);
+
+  // --- PAGINATION & SEARCH STATES ---
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [totalRecords, setTotalRecords] = useState(0);
+  const pageSize = 5;
+
   const [formData, setFormData] = useState({
     username: "",
     password: "",
@@ -15,21 +25,29 @@ const Staff = () => {
     role: "",
   });
 
+  // Re-fetch data whenever page or search changes
   useEffect(() => {
     loadStaff();
-  }, []);
+  }, [page, search]);
 
   const loadStaff = async () => {
     try {
       setLoading(true);
-      const res = await getAllStaff();
-      setStaff(res.data);
+      // Pass pagination params to the API
+      const res = await getAllStaff(page, pageSize, search);
+      
+      // Update states based on PagedResponse structure
+      setStaff(res.data.data || []);
+      setTotalRecords(res.data.totalRecords || 0);
     } catch (error) {
       toast.error("Failed to load staff");
+      setStaff([]);
     } finally {
       setLoading(false);
     }
   };
+
+  const totalPages = Math.ceil(totalRecords / pageSize);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -96,17 +114,34 @@ const Staff = () => {
           </h1>
           <p className="text-gray-500 mt-1">Manage system access, security roles, and team credentials.</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 hidden sm:block">
-            <span className="text-sm font-medium text-gray-600">Active Staff: </span>
-            <span className="text-blue-600 font-bold">{staff.length}</span>
+
+        <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+          {/* SEARCH INPUT */}
+          <div className="relative w-full md:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <input 
+              type="text"
+              placeholder="Search name, user or role..."
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/10 transition-all text-sm"
+            />
           </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all font-bold text-sm"
-          >
-            <UserPlus size={18} /> Add Member
-          </button>
+
+          <div className="flex items-center gap-4 w-full md:w-auto">
+            <div className="bg-white px-4 py-2.5 rounded-xl shadow-sm border border-gray-200 hidden md:block">
+              <span className="text-sm font-medium text-gray-600">Total: </span>
+              <span className="text-blue-600 font-bold">{totalRecords}</span>
+            </div>
+            {isAdmin && (
+              <button
+                onClick={() => setShowModal(true)}
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all font-bold text-sm"
+              >
+                <UserPlus size={18} /> Add Member
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -151,33 +186,58 @@ const Staff = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => handleEdit(s)}
-                          className="flex items-center gap-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded-lg transition-all duration-200 border border-blue-100"
-                        >
-                          <Edit3 size={14} />
-                          <span>Edit</span>
-                        </button>
-                        <button
-                          onClick={() => handleDelete(s.staffId)}
-                          className="flex items-center gap-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-3 py-1.5 rounded-lg transition-all duration-200 border border-red-100"
-                        >
-                          <Trash2 size={14} />
-                          <span>Delete</span>
-                        </button>
-                      </div>
+                      {isAdmin ? (
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => handleEdit(s)}
+                            className="flex items-center gap-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded-lg transition-all duration-200 border border-blue-100"
+                          >
+                            <Edit3 size={14} />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            onClick={() => handleDelete(s.staffId)}
+                            className="flex items-center gap-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-3 py-1.5 rounded-lg transition-all duration-200 border border-red-100"
+                          >
+                            <Trash2 size={14} />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">View Only</span>
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {staff.length === 0 && (
-            <div className="py-12 text-center">
-              <p className="text-gray-400">No team members found in the database.</p>
+          
+          {/* --- PAGINATION FOOTER --- */}
+          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+            <p className="text-sm text-gray-500 font-medium">
+              Showing <span className="text-gray-900">{staff.length}</span> of <span className="text-gray-900">{totalRecords}</span> results
+            </p>
+            <div className="flex gap-2">
+              <button
+                disabled={page === 1}
+                onClick={() => setPage(p => p - 1)}
+                className="p-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50 transition-all text-gray-600"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <div className="flex items-center px-4 text-sm font-bold text-gray-700">
+                Page {page} of {totalPages || 1}
+              </div>
+              <button
+                disabled={page >= totalPages}
+                onClick={() => setPage(p => p + 1)}
+                className="p-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50 transition-all text-gray-600"
+              >
+                <ChevronRight size={18} />
+              </button>
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -200,7 +260,8 @@ const Staff = () => {
               <p className="text-sm text-gray-500 mt-1">Configure staff details and permissions.</p>
             </div>
             
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
+              {/* Form inputs remain the same logic-wise */}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-gray-500 uppercase ml-1">Full Name</label>
                 <input
@@ -217,6 +278,7 @@ const Staff = () => {
                 <label className="text-xs font-bold text-gray-500 uppercase ml-1">Username</label>
                 <input
                   type="text"
+                  autoComplete="off"
                   placeholder="johndoe_admin"
                   value={formData.username}
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
@@ -229,6 +291,7 @@ const Staff = () => {
                 <label className="text-xs font-bold text-gray-500 uppercase ml-1">Password</label>
                 <input
                   type="password"
+                  autoComplete="new-password"
                   placeholder={editingStaff ? "Leave blank to keep current" : "Min. 6 characters"}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
@@ -246,10 +309,8 @@ const Staff = () => {
                   required
                 >
                   <option value="">Select a role...</option>
-                  <option value="Admin">Admin</option>
                   <option value="Manager">Manager</option>
                   <option value="Receptionist">Receptionist</option>
-                  <option value="Housekeeping">Housekeeping</option>
                 </select>
               </div>
 

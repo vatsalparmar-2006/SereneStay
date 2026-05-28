@@ -1,4 +1,4 @@
-﻿using HotelManagementSystem.DTO;
+using HotelManagementSystem.DTO;
 using HotelManagementSystem.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -19,7 +19,9 @@ namespace HotelManagementSystem.Controllers
             _context = context;
         }
 
+        #region AddRoom
         // POST: api/Rooms/AddRoom
+        [Authorize(Roles = "Manager")]
         [HttpPost("AddRoom")]
         public async Task<IActionResult> AddRoom([FromBody] RoomCreateDTO roomDto)
         {
@@ -49,7 +51,9 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region GetAllRooms
         // GET: api/Rooms/AllRooms
         [HttpGet("AllRooms")]
         [AllowAnonymous]
@@ -79,7 +83,9 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region GetRoomById
         //GET: api/Rooms/GetRoomById/{id}
         [HttpGet("GetRoomById/{id}")]
         [AllowAnonymous]
@@ -117,8 +123,11 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region UpdateRoom
         // PUT: api/Rooms/UpdateRoom/{id}
+        [Authorize(Roles = "Manager")]
         [HttpPut("UpdateRoom/{id}")]
         public async Task<IActionResult> UpdateRoom(int id, [FromBody] RoomCreateDTO roomDto)
         {
@@ -158,8 +167,11 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region DeleteRoom
         // DELETE: api/Rooms/DeleteRoom/{id}
+        [Authorize(Roles = "Manager")]
         [HttpDelete("DeleteRoom/{id}")]
         public async Task<IActionResult> DeleteRoom(int id)
         {
@@ -182,7 +194,9 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region SearchAvailableRooms
         // GET: api/Rooms/SearchAvailableRooms
         [HttpGet("SearchAvailableRooms")]
         [AllowAnonymous]
@@ -192,7 +206,7 @@ namespace HotelManagementSystem.Controllers
             {
                 DateOnly today = DateOnly.FromDateTime(DateTime.Today);
 
-                // 1. Validation Logic
+                // Validation 
                 if (searchRoomDto.CheckInDate < today)
                     return BadRequest("Check-in date cannot be in the past.");
 
@@ -207,8 +221,7 @@ namespace HotelManagementSystem.Controllers
                                        ? searchRoomDto.TotalMembers
                                        : actualGuests;
 
-                // 2. Identify Booked Room IDs
-                // We find any booking that OVERLAPS with the requested dates
+                // Identify Booked Room IDs
                 var bookedRoomIds = await _context.Bookings
                     .Where(b => b.Status != "Cancelled" &&
                                 searchRoomDto.CheckInDate < b.CheckOutDate &&
@@ -217,12 +230,11 @@ namespace HotelManagementSystem.Controllers
                     .Distinct()
                     .ToListAsync();
 
-                // 3. Fetch ONLY Available Rooms
-                // Use !bookedRoomIds.Contains(r.RoomId) to exclude them
+                // Fetch ONLY Available Rooms
                 var rooms = await _context.Rooms
                     .Include(r => r.RoomType)
-                    .Where(r => !bookedRoomIds.Contains(r.RoomId)) // Exclude booked rooms
-                    .Where(r => r.Status == "Available") // Ensure room isn't under maintenance
+                    .Where(r => !bookedRoomIds.Contains(r.RoomId)) 
+                    .Where(r => r.Status == "Available") 
                     .ToListAsync();
 
                 if (!rooms.Any())
@@ -233,7 +245,7 @@ namespace HotelManagementSystem.Controllers
                 int maxCapacity = (int)rooms.Max(r => r.MaxOccupancy);
                 bool requiresMultipleRooms = effectiveMembers > maxCapacity;
 
-                // 4. Map to DTO
+                // Map to DTO
                 var result = rooms
                     .Where(r => r.MaxOccupancy >= effectiveMembers || requiresMultipleRooms)
                     .Select(r => new RoomDisplayDTO
@@ -244,7 +256,7 @@ namespace HotelManagementSystem.Controllers
                         BedCounts = r.RoomType.BedCounts,
                         PricePerNight = r.PricePerNight,
                         MaxOccupancy = (int)r.MaxOccupancy,
-                        Status = "Available", // If they are in this list, they are available
+                        Status = "Available", 
                         Description = r.RoomType.Description
                     })
                     .OrderBy(r => r.RoomNumber)
@@ -255,7 +267,7 @@ namespace HotelManagementSystem.Controllers
                     EffectiveMembers = effectiveMembers,
                     RequiresMultipleRooms = requiresMultipleRooms,
                     Message = requiresMultipleRooms
-                        ? "Multiple rooms are required. Please select more than one room."
+                        ? "You may need to select multiple rooms depending on your requirements."
                         : "Single room booking possible.",
                     Rooms = result
                 });
@@ -265,5 +277,6 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
     }
 }

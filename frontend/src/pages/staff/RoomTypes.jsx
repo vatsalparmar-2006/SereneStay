@@ -5,14 +5,24 @@ import {
   updateRoomType,
   deleteRoomType
 } from "../../api/roomType.api";
-import { Plus, Edit3, Trash2, Bed, X, Layers } from "lucide-react"; 
+import { Plus, Edit3, Trash2, Bed, X, Layers, Search, ChevronLeft, ChevronRight } from "lucide-react"; 
 import toast from "react-hot-toast";
 
 const RoomTypes = () => {
+  // --- ROLE PERMISSION CHECK ---
+  const userRole = localStorage.getItem("userRole");
+  const isAdmin = userRole === "Admin" || userRole === "Manager";
+
   const [roomTypes, setRoomTypes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingType, setEditingType] = useState(null);
+  
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [totalRecords, setTotalRecords] = useState(0);
+  const pageSize = 5;
+
   const [formData, setFormData] = useState({
     typeName: "",
     bedCounts: "",
@@ -21,22 +31,33 @@ const RoomTypes = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [page, search]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const res = await getAllRoomTypes();
-      setRoomTypes(res.data);
+      const res = await getAllRoomTypes(page, pageSize, search);
+      
+      // FIXED: Correctly accessing data from the paginated response
+      setRoomTypes(res.data.data || []);
+      setTotalRecords(res.data.totalRecords || 0);
     } catch (error) {
       toast.error("Failed to load room types");
+      setRoomTypes([]);
     } finally {
       setLoading(false);
     }
   };
 
+  const totalPages = Math.ceil(totalRecords / pageSize);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // Only proceed if user is Admin
+    if (!isAdmin) {
+      toast.error("Access denied: Admins only.");
+      return;
+    }
     try {
       if (editingType) {
         await updateRoomType(editingType.roomTypeId, formData);
@@ -63,6 +84,11 @@ const RoomTypes = () => {
   };
 
   const handleDelete = async (id) => {
+    // Role Check
+    if (!isAdmin) {
+      toast.error("Access denied.");
+      return;
+    }
     if (window.confirm("Are you sure you want to delete this room type?")) {
       try {
         await deleteRoomType(id);
@@ -90,17 +116,36 @@ const RoomTypes = () => {
           </h1>
           <p className="text-gray-500 mt-1">Define and manage luxury stay tiers and room configurations.</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200">
-            <span className="text-sm font-medium text-gray-600">Total Categories: </span>
-            <span className="text-blue-600 font-bold">{roomTypes.length}</span>
+        
+        <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+          {/* SEARCH INPUT */}
+          <div className="relative w-full md:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <input 
+              type="text"
+              placeholder="Search types..."
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/10 transition-all text-sm"
+            />
           </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all font-bold text-sm"
-          >
-            <Plus size={18} /> Add Category
-          </button>
+
+          <div className="flex items-center gap-4 w-full md:w-auto">
+            <div className="bg-white px-4 py-2.5 rounded-xl shadow-sm border border-gray-200 hidden md:block">
+              <span className="text-sm font-medium text-gray-600">Total: </span>
+              <span className="text-blue-600 font-bold">{totalRecords}</span>
+            </div>
+            
+            {/* ONLY SHOW ADD BUTTON TO ADMIN */}
+            {isAdmin && (
+              <button
+                onClick={() => setShowModal(true)}
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all font-bold text-sm"
+              >
+                <Plus size={18} /> Add Category
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -115,11 +160,11 @@ const RoomTypes = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  {["Category Name", "Bed Capacity", "Description", "Actions"].map((header) => (
-                    <th key={header} className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      {header}
-                    </th>
-                  ))}
+                  {/* Handle dynamic header count based on role */}
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Category Name</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Bed Capacity</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</th>
+                  {isAdmin && <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100">
@@ -143,39 +188,63 @@ const RoomTypes = () => {
                         {type.description || "No description provided."}
                       </p>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => handleEdit(type)}
-                          className="flex items-center gap-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded-lg transition-all duration-200 border border-blue-100"
-                        >
-                          <Edit3 size={14} />
-                          <span>Edit</span>
-                        </button>
-                        <button
-                          onClick={() => handleDelete(type.roomTypeId)}
-                          className="flex items-center gap-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-3 py-1.5 rounded-lg transition-all duration-200 border border-red-100"
-                        >
-                          <Trash2 size={14} />
-                          <span>Delete</span>
-                        </button>
-                      </div>
-                    </td>
+                    {/* ONLY SHOW ACTION BUTTONS TO ADMIN */}
+                    {isAdmin && (
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => handleEdit(type)}
+                            className="flex items-center gap-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded-lg transition-all duration-200 border border-blue-100"
+                          >
+                            <Edit3 size={14} />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            onClick={() => handleDelete(type.roomTypeId)}
+                            className="flex items-center gap-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-3 py-1.5 rounded-lg transition-all duration-200 border border-red-100"
+                          >
+                            <Trash2 size={14} />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {roomTypes.length === 0 && (
-            <div className="py-12 text-center">
-              <p className="text-gray-400">No room categories found in the database.</p>
+
+          {/* --- PAGINATION FOOTER --- */}
+          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+            <p className="text-sm text-gray-500 font-medium">
+              Showing <span className="text-gray-900">{roomTypes.length}</span> of <span className="text-gray-900">{totalRecords}</span> results
+            </p>
+            <div className="flex gap-2">
+              <button
+                disabled={page === 1}
+                onClick={() => setPage(p => p - 1)}
+                className="p-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50 transition-all text-gray-600"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <div className="flex items-center px-4 text-sm font-bold text-gray-700">
+                Page {page} of {totalPages || 1}
+              </div>
+              <button
+                disabled={page >= totalPages}
+                onClick={() => setPage(p => p + 1)}
+                className="p-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50 transition-all text-gray-600"
+              >
+                <ChevronRight size={18} />
+              </button>
             </div>
-          )}
+          </div>
         </div>
       )}
 
-      {/* Modal Overlay */}
-      {showModal && (
+      {/* Modal - Restricted to Admin by handleSubmit but also hidden for safety */}
+      {showModal && isAdmin && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl relative border border-gray-100 animate-in fade-in zoom-in duration-200">
             <button 

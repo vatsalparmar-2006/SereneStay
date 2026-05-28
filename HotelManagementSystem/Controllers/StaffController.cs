@@ -1,7 +1,9 @@
-﻿using HotelManagementSystem.DTO;
+using HotelManagementSystem.DTO;
+using HotelManagementSystem.Helper;
 using HotelManagementSystem.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -21,12 +23,13 @@ namespace HotelManagementSystem.Controllers
             _authService = authService;
         }
 
+        #region Login
         // POST: api/Staff/login
         [AllowAnonymous] 
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] StaffLoginDTO loginDto)
         {
-            // Authenticates the user and returns the JWT token and user info
+           
             var result = await _authService.LoginAsync(loginDto.Username, loginDto.Password);
 
             if (result == null)
@@ -34,7 +37,9 @@ namespace HotelManagementSystem.Controllers
 
             return Ok(result);
         }
+        #endregion
 
+        #region AddStaff
         // POST: api/Staff/AddStaff(Registration)
         [AllowAnonymous]
         [HttpPost("AddStaff")]
@@ -77,14 +82,30 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region GetAllStaff with Pagination and Search
         // GET: api/Staff/GetAllStaff
         [HttpGet("GetAllStaff")]
-        public async Task<IActionResult> GetAllStaff()
+        public async Task<IActionResult> GetAllStaff(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 5,
+            [FromQuery] string search = ""
+        )
         {
             try
             {
-                var staffList = await _context.Staffs
+                var query = _context.Staffs.AsQueryable();
+
+                if (!string.IsNullOrEmpty(search))
+                {
+                    string s = search.ToLower();
+                    query = query.Where(st => st.FullName.ToLower().Contains(s) ||
+                                              st.Username.ToLower().Contains(s) ||
+                                              st.Role.ToLower().Contains(s));
+                }
+
+                var projection = query.OrderByDescending(st => st.StaffId)
                     .Select(s => new StaffDisplayDTO
                     {
                         StaffId = s.StaffId,
@@ -92,17 +113,42 @@ namespace HotelManagementSystem.Controllers
                         FullName = s.FullName,
                         Role = s.Role,
                         CreatedAt = s.CreatedAt
-                    })
-                    .ToListAsync();
+                    });
 
-                return Ok(staffList);
+                var result = await projection.ToPagedResponseAsync(page, pageSize);
+
+                return Ok(result);
             }
             catch (Exception ex)
             {
                 return StatusCode(500, ex.Message);
             }
         }
+        //public async Task<IActionResult> GetAllStaff()
+        //{
+        //    try
+        //    {
+        //        var staffList = await _context.Staffs
+        //            .Select(s => new StaffDisplayDTO
+        //            {
+        //                StaffId = s.StaffId,
+        //                Username = s.Username,
+        //                FullName = s.FullName,
+        //                Role = s.Role,
+        //                CreatedAt = s.CreatedAt
+        //            })
+        //            .ToListAsync();
 
+        //        return Ok(staffList);
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        return StatusCode(500, ex.Message);
+        //    }
+        //}
+        #endregion
+
+        #region GetStaffById 
         // GET: api/Staff/GetStaffById/{id}
         [HttpGet("GetStaffById/{id}")]
         public async Task<IActionResult> GetStaffById(int id)
@@ -133,8 +179,11 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region UpdateStaff
         // PUT: api/Staff/UpdateStaff/{id}
+        [Authorize(Roles = "Manager")]
         [HttpPut("UpdateStaff/{id}")]
         public async Task<IActionResult> UpdateStaff(int id, [FromBody] StaffCreateDTO staffDto)
         {
@@ -168,9 +217,11 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region DeleteStaff
         // DELETE: api/Staff/DeleteStaff/{id}
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Manager")]
         [HttpDelete("DeleteStaff/{id}")]
         public async Task<IActionResult> DeleteStaff(int id)
         {
@@ -192,5 +243,6 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
     }
 }

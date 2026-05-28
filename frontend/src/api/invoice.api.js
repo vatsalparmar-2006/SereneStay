@@ -4,8 +4,10 @@ export const addInvoice = (data) => {
   return api.post("/Invoices/AddInvoice", data);
 };
 
-export const getAllInvoices = () => {
-  return api.get("/Invoices/GetAllInvoices");
+export const getAllInvoices = (page = 1, pageSize = 5, search = "") => {
+  return api.get(`/Invoices/GetAllInvoices`, {
+    params: { page, pageSize, search }
+  });
 };
 
 export const getInvoiceById = (id) => {

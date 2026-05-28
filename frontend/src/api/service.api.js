@@ -4,8 +4,10 @@ export const addService = (data) => {
   return api.post("/Services/AddService", data);
 };
 
-export const getAllServices = () => {
-  return api.get("/Services/AllServices");
+export const getAllServices = (page = 1, pageSize = 5, search = "") => {
+  return api.get(`/Services/AllServices`, {
+    params: { page, pageSize, search }
+  });
 };
 
 export const getServiceById = (id) => {

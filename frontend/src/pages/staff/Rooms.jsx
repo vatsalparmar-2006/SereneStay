@@ -3,17 +3,21 @@ import { getAllRooms, addRoom, updateRoom, deleteRoom } from "../../api/rooms.ap
 import { getAllRoomTypes } from "../../api/roomType.api";
 import { 
   Plus, Edit3, Trash2, Bed, Users, IndianRupee, X, 
-  ArrowLeft, CheckCircle2, AlertTriangle 
+  ArrowLeft, CheckCircle2, AlertTriangle, Wifi, Tv, Coffee, Wind 
 } from "lucide-react";
 import toast from "react-hot-toast";
 
 const Rooms = () => {
+  // --- ROLE PERMISSION CHECK ---
+  const userRole = localStorage.getItem("userRole");
+  const isAdmin = userRole === "Admin" || userRole === "Manager";
+
   const [rooms, setRooms] = useState([]);
-  const [roomTypes, setRoomTypes] = useState([]);
+  const [roomTypes, setRoomTypes] = useState([]); // Will store the array of types
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false); // New state
-  const [deleteId, setDeleteId] = useState(null); // New state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteId, setDeleteId] = useState(null);
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [editingRoom, setEditingRoom] = useState(null);
   
@@ -26,6 +30,13 @@ const Rooms = () => {
   };
 
   const DEFAULT_ROOM_IMG = "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=800";
+
+  const ROOM_FACILITIES = [
+    { icon: <Wifi size={14} />, label: "Wi-Fi" },
+    { icon: <Tv size={14} />, label: "Smart TV" },
+    { icon: <Coffee size={14} />, label: "Mini Bar" },
+    { icon: <Wind size={14} />, label: "AC" }
+  ];
 
   const [formData, setFormData] = useState({
     roomNumber: "", roomTypeId: "", pricePerNight: "", maxOccupancy: "",
@@ -40,7 +51,8 @@ const Rooms = () => {
     try {
       setLoading(true);
       const res = await getAllRooms();
-      setRooms(res.data);
+      // FIXED: Handles both direct array or PagedResponse structure
+      setRooms(res.data.data || res.data || []);
     } catch (error) {
       toast.error("Failed to load rooms");
     } finally {
@@ -51,7 +63,8 @@ const Rooms = () => {
   const loadRoomTypes = async () => {
     try {
       const res = await getAllRoomTypes();
-      setRoomTypes(res.data);
+      // FIXED: Correctly accessing the data array to prevent .map crashes
+      setRoomTypes(res.data.data || res.data || []);
     } catch (error) {
       console.error("Failed to load room types", error);
     }
@@ -59,6 +72,10 @@ const Rooms = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!isAdmin) {
+      toast.error("Access denied: Only Admins can modify inventory.");
+      return;
+    }
     try {
       if (editingRoom) {
         await updateRoom(editingRoom.roomID, formData);
@@ -85,8 +102,11 @@ const Rooms = () => {
     setShowModal(true);
   };
 
-  // Trigger the confirmation modal instead of window.confirm
   const confirmDelete = (id) => {
+    if (!isAdmin) {
+      toast.error("Access denied.");
+      return;
+    }
     setDeleteId(id);
     setShowDeleteModal(true);
   };
@@ -119,12 +139,16 @@ const Rooms = () => {
             <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Hotel Inventory</h1>
             <p className="text-gray-500 mt-1">Quick view of all available suites and rooms.</p>
           </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all font-bold text-sm"
-          >
-            <Plus size={18} /> Add New Room
-          </button>
+          
+          {/* ONLY SHOW ADD BUTTON TO ADMIN */}
+          {isAdmin && (
+            <button
+              onClick={() => setShowModal(true)}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all font-bold text-sm"
+            >
+              <Plus size={18} /> Add New Room
+            </button>
+          )}
         </div>
       )}
 
@@ -148,7 +172,7 @@ const Rooms = () => {
               <div className="flex justify-between items-start mb-6">
                 <div>
                   <h2 className="text-4xl font-black text-gray-900">{selectedRoom.roomTypeName}</h2>
-                  <p className="text-blue-600 font-mono text-lg font-bold mt-1 uppercase">Room #{selectedRoom.roomNumber}</p>
+                  <p className="text-blue-600 font-mono text-lg font-bold mt-1 uppercase">Room {selectedRoom.roomNumber}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm text-gray-400 uppercase font-bold tracking-widest">Rate</p>
@@ -171,17 +195,39 @@ const Rooms = () => {
                 </div>
               </div>
 
-              <div className="flex gap-4 border-t pt-8">
-                <button onClick={() => handleEdit(selectedRoom)} className="flex-1 flex items-center justify-center gap-2 bg-gray-900 text-white py-4 rounded-2xl font-bold hover:bg-gray-800 transition-all shadow-lg">
-                  <Edit3 size={18} /> Modify Room
-                </button>
-                <button 
-                   onClick={() => confirmDelete(selectedRoom.roomID)}
-                   className="px-6 flex items-center justify-center bg-red-50 text-red-600 rounded-2xl hover:bg-red-600 hover:text-white transition-all border border-red-100"
-                >
-                  <Trash2 size={20} />
-                </button>
+              <div className="mb-8">
+                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Premium Amenities</h3>
+                <div className="flex flex-wrap gap-3">
+                  {ROOM_FACILITIES.map((fac, idx) => (
+                    <div key={idx} className="flex items-center gap-2 bg-blue-50 text-blue-600 px-3 py-2 rounded-xl text-xs font-bold">
+                      {fac.icon}
+                      {fac.label}
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-2 bg-blue-50 text-blue-600 px-3 py-2 rounded-xl text-xs font-bold">
+                    <CheckCircle2 size={14} /> Premium Linens
+                  </div>
+                </div>
               </div>
+
+              {/* ONLY SHOW MODIFY/DELETE SECTION TO ADMIN */}
+              {isAdmin ? (
+                <div className="flex gap-4 border-t pt-8">
+                  <button onClick={() => handleEdit(selectedRoom)} className="flex-1 flex items-center justify-center gap-2 bg-gray-900 text-white py-4 rounded-2xl font-bold hover:bg-gray-800 transition-all shadow-lg">
+                    <Edit3 size={18} /> Modify Room
+                  </button>
+                  <button 
+                     onClick={() => confirmDelete(selectedRoom.roomID)}
+                     className="px-6 flex items-center justify-center bg-red-50 text-red-600 rounded-2xl hover:bg-red-600 hover:text-white transition-all border border-red-100"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-4 p-4 bg-blue-50 text-blue-600 rounded-xl font-bold text-center border border-blue-100 text-sm">
+                   Inventory Locked (Read-Only)
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -195,54 +241,54 @@ const Rooms = () => {
               </div>
               <div className="p-4">
                 <h3 className="text-lg font-black text-gray-900 tracking-tight">{room.roomTypeName}</h3>
-                <p className="text-blue-600 font-bold text-xs mt-1 uppercase">ROOM #{room.roomNumber}</p>
+                <p className="text-blue-600 font-bold text-xs mt-1 uppercase">ROOM {room.roomNumber}</p>
+                <div className="flex gap-2 mt-3 flex-wrap">
+                  {ROOM_FACILITIES.slice(0, 3).map((fac, idx) => (
+                    <div key={idx} className="flex items-center gap-1 bg-gray-50 text-gray-500 px-2 py-1 rounded-lg text-[10px] font-bold" title={fac.label}>
+                      {fac.icon}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* NEW: Premium Delete Confirmation Modal */}
-      {showDeleteModal && (
+      {/* Delete Confirmation Modal (Admin Only) */}
+      {showDeleteModal && isAdmin && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-[100] p-4">
-          <div className="bg-white rounded-[2.5rem] p-10 w-full max-w-sm shadow-2xl animate-in zoom-in duration-200 text-center">
-            <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6">
-              <AlertTriangle size={40} className="text-red-500 animate-pulse" />
+          <div className="bg-white rounded-[2.5rem] p-10 w-full max-sm shadow-2xl animate-in zoom-in duration-200 text-center">
+            <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 text-red-500">
+              <AlertTriangle size={40} />
             </div>
             <h2 className="text-2xl font-black text-gray-900 mb-2">Are you sure?</h2>
-            <p className="text-gray-500 mb-8 font-medium">This action cannot be undone. This room will be permanently removed from the hotel inventory.</p>
+            <p className="text-gray-500 mb-8 font-medium">This action cannot be undone. This room will be permanently removed.</p>
             <div className="flex gap-4">
-              <button 
-                onClick={() => setShowDeleteModal(false)} 
-                className="flex-1 py-4 bg-gray-100 text-gray-600 rounded-2xl font-bold hover:bg-gray-200 transition-all"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={executeDelete} 
-                className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black shadow-lg shadow-red-200 hover:bg-red-700 transition-all"
-              >
-                Delete
-              </button>
+              <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-4 bg-gray-100 text-gray-600 rounded-2xl font-bold hover:bg-gray-200 transition-all">Cancel</button>
+              <button onClick={executeDelete} className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black shadow-lg shadow-red-200 hover:bg-red-700 transition-all">Delete</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal - Add/Edit Room (Standard UI) */}
-      {showModal && (
+      {/* Modal - Add/Edit Room (Restricted to Admin) */}
+      {showModal && isAdmin && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl relative animate-in fade-in zoom-in duration-200">
             <button onClick={resetForm} className="absolute top-6 right-6 p-2 text-gray-400 hover:bg-gray-100 rounded-full"><X size={20}/></button>
             <h2 className="text-2xl font-bold mb-6 flex items-center gap-3"><Bed className="text-blue-600" /> {editingRoom ? "Edit Room" : "Add Room"}</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <input type="number" placeholder="Room #" value={formData.roomNumber} onChange={(e) => setFormData({ ...formData, roomNumber: e.target.value })} className="bg-gray-50 p-3 rounded-xl border border-gray-100 font-bold" required />
+                <input type="number" placeholder="Room " value={formData.roomNumber} onChange={(e) => setFormData({ ...formData, roomNumber: e.target.value })} className="bg-gray-50 p-3 rounded-xl border border-gray-100 font-bold" required />
                 <input type="number" placeholder="Max Guests" value={formData.maxOccupancy} onChange={(e) => setFormData({ ...formData, maxOccupancy: e.target.value })} className="bg-gray-50 p-3 rounded-xl border border-gray-100 font-bold" required />
               </div>
               <select value={formData.roomTypeId} onChange={(e) => setFormData({ ...formData, roomTypeId: e.target.value })} className="w-full bg-gray-50 p-3 rounded-xl border border-gray-100 font-bold" required>
                 <option value="">Select Category</option>
-                {roomTypes.map((type) => (<option key={type.roomTypeId} value={type.roomTypeId}>{type.typeName}</option>))}
+                {/* FIXED: Safe mapping logic */}
+                {roomTypes.map((type) => (
+                  <option key={type.roomTypeId} value={type.roomTypeId}>{type.typeName}</option>
+                ))}
               </select>
               <div className="relative">
                 <IndianRupee size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />

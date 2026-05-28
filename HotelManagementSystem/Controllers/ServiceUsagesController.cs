@@ -19,6 +19,7 @@ namespace HotelManagementSystem.Controllers
             _context = context;
         }
 
+        #region AddServiceUsage
         [HttpPost("AddServiceUsage")]
         public async Task<IActionResult> AddServiceUsage([FromBody] ServiceUsageCreateDTO serviceUsageDto)
         {
@@ -49,7 +50,9 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region GetAllUsage
         [HttpGet("GetAllUsage")]
         public async Task<IActionResult> GetAllUsage()
         {
@@ -74,7 +77,9 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region GetUsageById
         [HttpGet("GetUsageById/{id}")]
         public async Task<IActionResult> GetUsageById(int id)
         {
@@ -104,7 +109,9 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region UpdateUsage
         [HttpPut("UpdateUsage/{id}")]
         public async Task<IActionResult> UpdateUsage(int id, [FromBody] ServiceUsageCreateDTO serviceUsageDto)
         {
@@ -137,7 +144,9 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
 
+        #region DeleteUsage
         [HttpDelete("DeleteUsage/{id}")]
         public async Task<IActionResult> DeleteUsage(int id)
         {
@@ -159,5 +168,6 @@ namespace HotelManagementSystem.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+        #endregion
     }
 }
